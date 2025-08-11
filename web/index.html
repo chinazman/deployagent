@@ -13,12 +13,20 @@
     .muted{color:#9aa4b2;font-size:12px}
   </style>
   <script>
+    // 计算基础路径：取到 "/web/" 之前的路径作为 __BASE_PATH__（如 "/deployagent"），根路径则为空串
+    (function(){
+      var p=location.pathname; var i=p.indexOf('/web/');
+      window.__BASE_PATH__ = i>=0 ? p.slice(0,i) : '';
+    })();
+  </script>
+  <script>
     async function login(e){
       e.preventDefault();
       const username=document.getElementById('username').value;
       const password=document.getElementById('password').value;
-      const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-      if(r.ok){location.href='/web/app.html'}else{alert('登录失败')}
+      const base=(window.__BASE_PATH__||'')
+      const r=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+      if(r.ok){location.href=base+'/web/app.html'}else{alert('登录失败')}
     }
   </script>
 </head>

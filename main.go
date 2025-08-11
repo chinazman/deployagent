@@ -26,6 +26,7 @@ type Config struct {
     Server struct {
         Addr           string `yaml:"addr"`
         Secret         string `yaml:"secret"`
+        BasePath       string `yaml:"base_path"`
         UploadDir      string `yaml:"upload_dir"`
         ScriptDir      string `yaml:"script_dir"`
         LogsDir        string `yaml:"logs_dir"`
@@ -56,6 +57,11 @@ func loadConfig() {
         if err := dec.Decode(&cfg); err != nil {
             log.Fatalf("配置解析失败: %v", err)
         }
+        // 规范化基础路径，默认 /deployagent
+        cfg.Server.BasePath = normalizeBasePath(cfg.Server.BasePath)
+        if cfg.Server.BasePath == "" {
+            cfg.Server.BasePath = "/deployagent"
+        }
         mustMkdir(cfg.Server.UploadDir)
         mustMkdir(cfg.Server.ScriptDir)
         mustMkdir(cfg.Server.LogsDir)
@@ -76,6 +82,35 @@ func calcMD5Hex(s string) string {
     return hex.EncodeToString(sum[:])
 }
 
+// 将配置中的 base_path 规范为以 / 开头、无结尾 /
+func normalizeBasePath(p string) string {
+    if p == "" {
+        return ""
+    }
+    // 去除尾部 /
+    for strings.HasSuffix(p, "/") && p != "/" {
+        p = strings.TrimSuffix(p, "/")
+    }
+    if !strings.HasPrefix(p, "/") {
+        p = "/" + p
+    }
+    if p == "/" {
+        return "" // 根路径等价于空前缀
+    }
+    return p
+}
+
+// 拼接基础路径前缀
+func withBase(path string) string {
+    if cfg.Server.BasePath == "" {
+        return path
+    }
+    if !strings.HasPrefix(path, "/") {
+        path = "/" + path
+    }
+    return cfg.Server.BasePath + path
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
     w.Header().Set("Content-Type", "application/json; charset=utf-8")
     w.WriteHeader(status)
@@ -90,12 +125,12 @@ func checkLogin(r *http.Request) bool {
 
 func requireLogin(next http.HandlerFunc) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
-        if strings.HasPrefix(r.URL.Path, "/web/") || r.URL.Path == "/" || r.URL.Path == "/api/login" {
+        if strings.HasPrefix(r.URL.Path, withBase("/web/")) || r.URL.Path == withBase("/") || r.URL.Path == withBase("/api/login") {
             next(w, r)
             return
         }
         if !checkLogin(r) {
-            http.Redirect(w, r, "/web/index.html", http.StatusFound)
+            http.Redirect(w, r, withBase("/web/index.html"), http.StatusFound)
             return
         }
         next(w, r)
@@ -126,12 +161,12 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(http.StatusUnauthorized)
         return
     }
-    http.SetCookie(w, &http.Cookie{Name: "login", Value: "1", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
+    http.SetCookie(w, &http.Cookie{Name: "login", Value: "1", Path: func() string { if cfg.Server.BasePath=="" { return "/" } ; return cfg.Server.BasePath }(), HttpOnly: true, SameSite: http.SameSiteLaxMode})
     w.WriteHeader(http.StatusOK)
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
-    http.SetCookie(w, &http.Cookie{Name: "login", Value: "", Path: "/", Expires: time.Unix(0, 0), MaxAge: -1})
+    http.SetCookie(w, &http.Cookie{Name: "login", Value: "", Path: func() string { if cfg.Server.BasePath=="" { return "/" } ; return cfg.Server.BasePath }(), Expires: time.Unix(0, 0), MaxAge: -1})
     w.WriteHeader(http.StatusOK)
 }
 
@@ -367,24 +402,29 @@ func main() {
     loadConfig()
 
     fs := http.FileServer(http.Dir("web"))
-    http.Handle("/web/", http.StripPrefix("/web/", fs))
+    // 静态资源与入口页
+    http.Handle(withBase("/web/"), http.StripPrefix(withBase("/web/"), fs))
+    http.HandleFunc(withBase("/"), func(w http.ResponseWriter, r *http.Request) {
+        http.Redirect(w, r, withBase("/web/index.html"), http.StatusFound)
+    })
+    // 方便从根路径跳转到基础路径（可选）
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        http.Redirect(w, r, "/web/index.html", http.StatusFound)
+        http.Redirect(w, r, withBase("/web/index.html"), http.StatusFound)
     })
 
-    http.HandleFunc("/api/login", requireLogin(handleLogin))
-    http.HandleFunc("/api/logout", requireLogin(handleLogout))
+    http.HandleFunc(withBase("/api/login"), requireLogin(handleLogin))
+    http.HandleFunc(withBase("/api/logout"), requireLogin(handleLogout))
     // /deploy 开放，仅签名认证
-    http.HandleFunc("/deploy", handleDeploy)
+    http.HandleFunc(withBase("/deploy"), handleDeploy)
 
-    http.HandleFunc("/api/logs", requireLogin(handleLogsList))
-    http.HandleFunc("/api/logs/view", requireLogin(handleLogsView))
-    http.HandleFunc("/api/logs/tail", requireLogin(handleLogsTail))
+    http.HandleFunc(withBase("/api/logs"), requireLogin(handleLogsList))
+    http.HandleFunc(withBase("/api/logs/view"), requireLogin(handleLogsView))
+    http.HandleFunc(withBase("/api/logs/tail"), requireLogin(handleLogsTail))
 
-    http.HandleFunc("/api/docker/ps", requireLogin(handleDockerPs))
-    http.HandleFunc("/api/docker/logs", requireLogin(handleDockerLogs))
+    http.HandleFunc(withBase("/api/docker/ps"), requireLogin(handleDockerPs))
+    http.HandleFunc(withBase("/api/docker/logs"), requireLogin(handleDockerLogs))
 
-    http.HandleFunc("/api/sign", requireLogin(handleSign))
+    http.HandleFunc(withBase("/api/sign"), requireLogin(handleSign))
 
     log.Printf("服务启动于 %s", cfg.Server.Addr)
     log.Fatal(http.ListenAndServe(cfg.Server.Addr, nil))

@@ -1,6 +1,8 @@
 # 服务监听与安全配置
 server:
   addr: ":8080"
+  # 应用基础路径（统一前缀）。默认为 /deployagent，可设为 "/" 或空表示根路径
+  base_path: "/deployagent"
   secret: "CHANGE_ME_SECRET"
   upload_dir: "uploads"
   script_dir: "scripts"

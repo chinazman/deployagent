@@ -15,11 +15,19 @@
     .row{display:flex;gap:8px}
   </style>
   <script>
-    async function logout(){await fetch('/api/logout',{method:'POST'});location.href='/web/index.html'}
+    // 与 index.html 相同的基础路径发现逻辑
+    (function(){
+      var p=location.pathname; var i=p.indexOf('/web/');
+      window.__BASE_PATH__ = i>=0 ? p.slice(0,i) : '';
+    })();
+  </script>
+  <script>
+    const BASE=(window.__BASE_PATH__||'');
+    async function logout(){await fetch(BASE+'/api/logout',{method:'POST'});location.href=BASE+'/web/index.html'}
     async function deploy(e){
       e.preventDefault();
       const code=document.getElementById('code').value;
-      const sigResp=await fetch(`/api/sign?code=${encodeURIComponent(code)}`);
+      const sigResp=await fetch(`${BASE}/api/sign?code=${encodeURIComponent(code)}`);
       if(!sigResp.ok){alert('获取签名失败');return}
       const {timestamp:ts,sign}=await sigResp.json();
       const file=document.getElementById('file').files[0];
@@ -28,11 +36,11 @@
       fd.append('timestamp',ts);
       fd.append('sign',sign);
       if(file) fd.append('file',file);
-      const r=await fetch('/deploy',{method:'POST',body:fd});
+      const r=await fetch(BASE+'/deploy',{method:'POST',body:fd});
       document.getElementById('deployLog').textContent=await r.text();
     }
     async function listLogs(){
-      const r=await fetch('/api/logs');
+      const r=await fetch(BASE+'/api/logs');
       const data=await r.json();
       const sel=document.getElementById('logSelect');
       sel.innerHTML='';
@@ -42,25 +50,25 @@
       const name=document.getElementById('logSelect').value;
       const start=document.getElementById('start').value||'0';
       const n=document.getElementById('lines').value||'100';
-      const r=await fetch(`/api/logs/view?file=${encodeURIComponent(name)}&start=${start}&n=${n}`);
+      const r=await fetch(`${BASE}/api/logs/view?file=${encodeURIComponent(name)}&start=${start}&n=${n}`);
       document.getElementById('logView').textContent=await r.text();
     }
     let es=null;
     function watchLog(){
       if(es){es.close();es=null}
       const name=document.getElementById('logSelect').value;
-      es=new EventSource(`/api/logs/tail?file=${encodeURIComponent(name)}`);
+      es=new EventSource(`${BASE}/api/logs/tail?file=${encodeURIComponent(name)}`);
       const box=document.getElementById('logTail');
       box.textContent='';
       es.onmessage=(ev)=>{box.textContent+=ev.data+'\n';box.scrollTop=box.scrollHeight}
     }
     async function listContainers(){
-      const r=await fetch('/api/docker/ps');
+      const r=await fetch(BASE+'/api/docker/ps');
       document.getElementById('dockerList').textContent=await r.text();
     }
     async function logsContainer(){
       const id=document.getElementById('containerId').value;
-      const r=await fetch(`/api/docker/logs?id=${encodeURIComponent(id)}`);
+      const r=await fetch(`${BASE}/api/docker/logs?id=${encodeURIComponent(id)}`);
       document.getElementById('dockerLogs').textContent=await r.text();
     }
     window.addEventListener('load',()=>{listLogs();listContainers();});

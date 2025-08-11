@@ -4,45 +4,44 @@
 
 ```bash
 # Windows 安装 Go 1.21+ 后，在项目根目录执行
-cd deployagent
 # 初始化依赖
 go mod tidy
 # 运行
 go run .
 ```
 
-服务默认监听 `:8080`。首次请修改 `config.yaml` 中的 `secret`、`users`。
+服务默认监听 `:8080`，基础路径默认为 `/deployagent`。首次请修改 `config.yaml` 中的 `secret`、`users`，必要时可调整 `server.base_path`。
 
 ## 目录与配置
-- `config.yaml`：服务端口、密钥、上传/脚本/日志目录、登录用户
+- `config.yaml`：服务端口、基础路径（`base_path`）、密钥、上传/脚本/日志目录、登录用户
 - `web/`：简单前端（登录、部署、日志、Docker）
 - `scripts/`：放置 `{code}.sh` 脚本。例如 `example.sh`
 - `uploads/`：上传文件保存位置
 - `logs/`：日志目录（供查看/追踪）
 
 ## 部署流程
-1. 登录：访问 `http://localhost:8080`，使用配置的用户名密码
-2. 在“部署”区填写 `code`（仅字母数字-_）和 `secret`（示例用，生产应由后端生成签名或自有签名工具）`
+1. 登录：访问 `http://localhost:8080/deployagent/`，使用配置的用户名密码
+2. 在“部署”区填写 `code`（仅字母数字-_）和 `secret`（示例用，生产应由后端生成签名或自有签名工具）
 3. 选择文件并提交
 4. 服务端校验签名 `md5(secret+code+timestamp)`，保存文件，执行 `scripts/{code}.sh` 将文件路径作为参数传入，同时也通过环境变量 `UPLOAD_FILE`、`CODE` 传入
 
-## 日志
-- 列表：`/api/logs`
-- 查看：`/api/logs/view?file={name}&start={0基行}&n={行数}`
-- 追踪：`/api/logs/tail?file={name}`（SSE）
+## 日志（均挂载在基础路径下，默认为 `/deployagent`）
+- 列表：`/deployagent/api/logs`
+- 查看：`/deployagent/api/logs/view?file={name}&start={0基行}&n={行数}`
+- 追踪：`/deployagent/api/logs/tail?file={name}`（SSE）
 
-## Docker
-- 列出容器：`/api/docker/ps`
-- 查看容器日志：`/api/docker/logs?id={容器ID或名称}`
+## Docker（同样挂载在基础路径下）
+- 列出容器：`/deployagent/api/docker/ps`
+- 查看容器日志：`/deployagent/api/docker/logs?id={容器ID或名称}`
 
 ## 安全建议
 - 必须修改 `config.yaml` 的 `secret` 和账户
 - 根据需要限制脚本目录权限，并审计脚本内容
 - 建议在内网或加上反向代理与 TLS
 
-## Jenkins - Execute NodeJS script 调用 /deploy 示例
+## Jenkins - Execute NodeJS script 调用 /deploy 示例（基础路径 `/deployagent`）
 在 Jenkins 任务中添加“Execute NodeJS script”步骤，Node 版本建议使用 18+（内置 `fetch`/`FormData`/`Blob`）。在构建前配置以下环境变量（可使用 Credentials 注入）：
-- `DEPLOY_URL`：例如 `http://your-host:8080/deploy`
+- `DEPLOY_URL`：例如 `http://your-host:8080/deployagent/deploy`
 - `DEPLOY_SECRET`：与服务端 `config.yaml.server.secret` 一致
 - `DEPLOY_CODE`：部署 code（仅字母、数字、-_）
 - `DEPLOY_FILE`：要上传的文件绝对路径（可选）
@@ -55,7 +54,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const DEPLOY_URL = process.env.DEPLOY_URL || 'http://localhost:8080/deploy';
+const DEPLOY_URL = process.env.DEPLOY_URL || 'http://localhost:8080/deployagent/deploy';
 const DEPLOY_SECRET = process.env.DEPLOY_SECRET || '';
 const DEPLOY_CODE = process.env.DEPLOY_CODE || 'example';
 const DEPLOY_FILE = process.env.DEPLOY_FILE || '';
