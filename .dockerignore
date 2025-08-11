@@ -1,0 +1,14 @@
+# Go build cache
+**/bin
+**/dist
+**/.cache
+**/node_modules
+**/.git
+**/.gitignore
+**/.vscode
+**/.idea
+**/*.log
+**/*.tmp
+**/*.swp
+uploads
+logs

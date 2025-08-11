@@ -1,0 +1,17 @@
+# 服务监听与安全配置
+server:
+  addr: ":8080"
+  secret: "CHANGE_ME_SECRET"
+  upload_dir: "uploads"
+  script_dir: "scripts"
+  logs_dir: "logs"
+  # 允许的文件大小（字节），这里是 200MB
+  max_upload_bytes: 209715200
+
+# 简单的账户配置（无需数据库）
+auth:
+  users:
+    - username: "admin"
+      password: "admin123"  # 生产请更换
+
+

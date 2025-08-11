@@ -1,0 +1,35 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / Editors
+.vscode/
+.idea/
+*.code-workspace
+
+# Go build artifacts
+**/bin/
+**/dist/
+**/build/
+**/coverage/
+**/*.test
+**/*.out
+
+# Local binaries (Windows/Linux)
+deployagent
+deployagent.exe
+
+# Logs / temp
+**/*.log
+**/*.tmp
+**/*.swp
+
+# Runtime data directories
+uploads/
+logs/
+
+# Node
+node_modules/
+
+# Git
+.git-credentials
