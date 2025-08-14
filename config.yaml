@@ -6,7 +6,9 @@ server:
   secret: "CHANGE_ME_SECRET"
   upload_dir: "uploads"
   script_dir: "scripts"
-  logs_dir: "logs"
+  # 支持多个日志目录（相对于工作目录或绝对路径）。兼容旧字段 logs_dir
+  logs_dirs:
+    - "logs"
   # 允许的文件大小（字节），这里是 200MB
   max_upload_bytes: 209715200
 

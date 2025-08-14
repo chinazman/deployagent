@@ -29,7 +29,9 @@ type Config struct {
         BasePath       string `yaml:"base_path"`
         UploadDir      string `yaml:"upload_dir"`
         ScriptDir      string `yaml:"script_dir"`
-        LogsDir        string `yaml:"logs_dir"`
+        // 兼容单目录与多目录配置：优先使用 logs_dirs，其次回退到 logs_dir
+        LogsDir        string   `yaml:"logs_dir"`
+        LogsDirs       []string `yaml:"logs_dirs"`
         MaxUploadBytes int64  `yaml:"max_upload_bytes"`
     } `yaml:"server"`
     Auth struct {
@@ -64,7 +66,15 @@ func loadConfig() {
         }
         mustMkdir(cfg.Server.UploadDir)
         mustMkdir(cfg.Server.ScriptDir)
-        mustMkdir(cfg.Server.LogsDir)
+
+        // 兼容旧字段：当 logs_dirs 为空且 logs_dir 存在时，迁移为单元素数组
+        if len(cfg.Server.LogsDirs) == 0 && cfg.Server.LogsDir != "" {
+            cfg.Server.LogsDirs = []string{cfg.Server.LogsDir}
+        }
+        // 为所有日志目录创建目录
+        for _, d := range cfg.Server.LogsDirs {
+            mustMkdir(d)
+        }
     })
 }
 
@@ -284,14 +294,26 @@ func handleSign(w http.ResponseWriter, r *http.Request) {
 }
 
 func listLogFiles() ([]string, error) {
-    entries, err := os.ReadDir(cfg.Server.LogsDir)
-    if err != nil { return nil, err }
+    // 合并多个目录下的文件名，并去重；仅列出顶层文件，忽略子目录与隐藏文件
+    seen := make(map[string]struct{})
     var files []string
-    for _, e := range entries {
-        if e.IsDir() { continue }
-        name := e.Name()
-        if strings.HasPrefix(name, ".") { continue }
-        files = append(files, name)
+    if len(cfg.Server.LogsDirs) == 0 {
+        return files, nil
+    }
+    for _, dir := range cfg.Server.LogsDirs {
+        entries, err := os.ReadDir(dir)
+        if err != nil {
+            // 若某个目录不可读，跳过并继续
+            continue
+        }
+        for _, e := range entries {
+            if e.IsDir() { continue }
+            name := e.Name()
+            if strings.HasPrefix(name, ".") { continue }
+            if _, ok := seen[name]; ok { continue }
+            seen[name] = struct{}{}
+            files = append(files, name)
+        }
     }
     return files, nil
 }
@@ -305,9 +327,18 @@ func handleLogsList(w http.ResponseWriter, r *http.Request) {
 
 func safeLogPath(name string) (string, error) {
     if name == "" { return "", errors.New("空文件名") }
-    if strings.Contains(name, "..") { return "", errors.New("非法文件名") }
-    p := filepath.Join(cfg.Server.LogsDir, filepath.Base(name))
-    return p, nil
+    if filepath.IsAbs(name) { return "", errors.New("非法文件名") }
+    // 仅接受文件名，不接受子路径
+    cleaned := filepath.Base(filepath.Clean(name))
+    if cleaned == "." || cleaned == ".." { return "", errors.New("非法文件名") }
+    // 在所有允许的日志目录中查找该文件
+    for _, dir := range cfg.Server.LogsDirs {
+        p := filepath.Join(dir, cleaned)
+        if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+            return p, nil
+        }
+    }
+    return "", errors.New("文件不存在")
 }
 
 func handleLogsView(w http.ResponseWriter, r *http.Request) {
@@ -360,16 +391,31 @@ func handleLogsTail(w http.ResponseWriter, r *http.Request) {
     reader := bufio.NewReader(f)
     ticker := time.NewTicker(1 * time.Second)
     defer ticker.Stop()
+    ctx := r.Context()
     for {
+        // 支持客户端取消（前端点击“取消监控”或页面关闭）
+        select {
+        case <-ctx.Done():
+            return
+        default:
+        }
+
         line, err := reader.ReadString('\n')
         if err == io.EOF {
-            <-ticker.C
-            continue
+            // 等待新内容或取消
+            select {
+            case <-ticker.C:
+                continue
+            case <-ctx.Done():
+                return
+            }
         }
         if err != nil {
             return
         }
-        fmt.Fprintf(w, "data: %s\n\n", strings.TrimRight(line, "\n"))
+        if _, err := fmt.Fprintf(w, "data: %s\n\n", strings.TrimRight(line, "\n")); err != nil {
+            return
+        }
         flusher.Flush()
     }
 }

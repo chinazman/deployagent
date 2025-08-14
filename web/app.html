@@ -61,7 +61,31 @@
       const box=document.getElementById('logTail');
       box.textContent='';
       es.onmessage=(ev)=>{box.textContent+=ev.data+'\n';box.scrollTop=box.scrollHeight}
+      // 切换按钮状态
+      const btnWatch=document.getElementById('btnWatch');
+      const btnCancel=document.getElementById('btnCancelWatch');
+      if(btnWatch) btnWatch.disabled=true;
+      if(btnCancel) btnCancel.disabled=false;
+      // 若连接异常关闭，则恢复按钮状态
+      es.onerror=()=>{
+        // 某些浏览器会自动重连，不强制关闭；仅在 readyState=2(Closed) 时恢复
+        if(es && es.readyState===2){
+          const bw=document.getElementById('btnWatch');
+          const bc=document.getElementById('btnCancelWatch');
+          if(bw) bw.disabled=false;
+          if(bc) bc.disabled=true;
+          es.close(); es=null;
+        }
+      };
     }
+    function cancelWatch(){
+      if(es){ es.close(); es=null; }
+      const btnWatch=document.getElementById('btnWatch');
+      const btnCancel=document.getElementById('btnCancelWatch');
+      if(btnWatch) btnWatch.disabled=false;
+      if(btnCancel) btnCancel.disabled=true;
+    }
+    window.addEventListener('beforeunload',()=>{ if(es){es.close(); es=null;} });
     async function listContainers(){
       const r=await fetch(BASE+'/api/docker/ps');
       document.getElementById('dockerList').textContent=await r.text();
@@ -103,7 +127,10 @@
         <button onclick="viewLog()" style="width:120px">查看</button>
       </div>
       <pre id="logView"></pre>
-      <button onclick="watchLog()">实时监控</button>
+      <div class="row">
+        <button id="btnWatch" onclick="watchLog()">实时监控</button>
+        <button id="btnCancelWatch" onclick="cancelWatch()" disabled>取消监控</button>
+      </div>
       <pre id="logTail"></pre>
     </section>
     <section class="card">
